@@ -33,8 +33,8 @@ const createBezierGeometry = (
     controlPoints: THREE.Vector3[]
   ): THREE.BufferGeometry => {
     
-    const width = 1;
-    const height = 1;
+    const width = 100;
+    const height = 100;
     const widthSegments = accuracy - 1;
     const heightSegments = accuracy - 1;
   
