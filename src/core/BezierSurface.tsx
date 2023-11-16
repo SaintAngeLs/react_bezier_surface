@@ -91,22 +91,39 @@ const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent 
   // Define shaders
   const vertexShader = `
     varying vec3 vNormal;
+    varying vec2 vUv;
+
     void main() {
       vNormal = normal;
+      vUv = uv;
+
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `;
   const fragmentShader = `
     uniform vec3 uLightColor;
-    uniform vec3 uKd;
-    uniform vec3 uKs;
+    uniform vec3 uObjectColor;
+    uniform vec3 uLightPosition;
+    uniform vec3 uViewPosition;
+    uniform float uKd;
+    uniform float uKs;
+    uniform float uShininess;
     varying vec3 vNormal;
+    varying vec2 vUv;
+
     void main() {
       vec3 normal = normalize(vNormal);
-      vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0)); // Simple directional light
+      vec3 lightDir = normalize(uLightPosition - vNormal);
+      vec3 viewDir = normalize(uViewPosition - vNormal);
+      vec3 reflectDir = reflect(-lightDir, normal);
+      float spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
+
       float diff = max(dot(normal, lightDir), 0.0);
-      vec3 diffuse = uKd * diff * uLightColor;
-      gl_FragColor = vec4(diffuse, 1.0);
+      vec3 diffuse = uKd * diff * uLightColor * uObjectColor;
+      vec3 specular = uKs * spec * uLightColor;
+
+      vec3 result = diffuse + specular;
+      gl_FragColor = vec4(result, 1.0);
     }
   `;
 
@@ -116,11 +133,14 @@ const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent 
     fragmentShader,
     uniforms: {
       uLightColor: { value: new THREE.Color(1, 1, 1) },
-      uKd: { value: new THREE.Vector3(kd, kd, kd) },
-      uKs: { value: new THREE.Vector3(ks, ks, ks) },
-      // Add more uniforms as needed
+      uObjectColor: { value: new THREE.Color(1, 1, 1) }, // Default white, should be changed based on IO
+      uLightPosition: { value: new THREE.Vector3(10, 10, 10) }, // Example position, should be animated
+      uViewPosition: { value: new THREE.Vector3(0, 0, 10) }, // Camera position
+      uKd: { value: kd },
+      uKs: { value: ks },
+      uShininess: { value: specularExponent }
     },
-  }), [kd, ks]);
+  }), [kd, ks, specularExponent]);
 
   // Update the material on frame if necessary
   useFrame(() => {

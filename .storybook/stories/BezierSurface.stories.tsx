@@ -21,8 +21,8 @@ export default {
       control: {
         type: 'range',
         min: 1,
-        max: 100,
-        step: 1,
+        max: 20,
+        step: 0.01,
       },
     },
     kd: {
