@@ -49,6 +49,10 @@ export default {
         step: 1,
       },
     },
+    lightColor: { 
+      control: 'color',
+      description: 'The color of the light source',
+    },
     // Define additional argTypes for other properties like texture and normalMap if needed
   },
 } as Meta;
@@ -61,6 +65,7 @@ DefaultBezierSurface.args = {
   kd: 0.8,
   ks: 0.5,
   specularExponent: 32,
+  lightColor: '#ffffff',
   // Set defaults for other props like texture and normalMap if needed
 };
 

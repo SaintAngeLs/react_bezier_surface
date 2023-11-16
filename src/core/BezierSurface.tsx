@@ -81,7 +81,7 @@ const createBezierGeometry = (
   };
   
 
-const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent }) => {
+const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent, lightColor }) => {
   const { gl } = useThree();
   const controlPoints = generateControlPoints(16); // Assuming a 4x4 grid of control points
 
@@ -101,30 +101,37 @@ const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent 
     }
   `;
   const fragmentShader = `
-    uniform vec3 uLightColor;
-    uniform vec3 uObjectColor;
-    uniform vec3 uLightPosition;
-    uniform vec3 uViewPosition;
-    uniform float uKd;
-    uniform float uKs;
-    uniform float uShininess;
-    varying vec3 vNormal;
-    varying vec2 vUv;
-
-    void main() {
-      vec3 normal = normalize(vNormal);
-      vec3 lightDir = normalize(uLightPosition - vNormal);
-      vec3 viewDir = normalize(uViewPosition - vNormal);
-      vec3 reflectDir = reflect(-lightDir, normal);
-      float spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
-
-      float diff = max(dot(normal, lightDir), 0.0);
-      vec3 diffuse = uKd * diff * uLightColor * uObjectColor;
-      vec3 specular = uKs * spec * uLightColor;
-
-      vec3 result = diffuse + specular;
-      gl_FragColor = vec4(result, 1.0);
+  uniform vec3 uLightColor;
+  uniform vec3 uLightPosition;
+  uniform vec3 uViewPosition;
+  uniform float uKd;
+  uniform float uKs;
+  uniform float uShininess;
+  varying vec3 vNormal;
+  varying vec2 vUv;
+  
+  void main() {
+    vec3 normal = normalize(vNormal);
+    vec3 lightDir = normalize(uLightPosition - vNormal);
+    vec3 viewDir = normalize(uViewPosition - vNormal);
+    vec3 reflectDir = reflect(-lightDir, normal);
+  
+    // Diffuse component
+    float diff = max(dot(normal, lightDir), 0.0);
+    vec3 diffuse = uKd * uLightColor * diff;
+  
+    // Specular component
+    float spec = 0.0;
+    if(diff > 0.0) { // Only calculate specular if light hits the surface
+      spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
     }
+    vec3 specular = uKs * uLightColor * spec;
+  
+    // Combine results
+    vec3 result = diffuse + specular;
+    gl_FragColor = vec4(result, 1.0);
+  }
+  
   `;
 
   // Define material
@@ -132,7 +139,8 @@ const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent 
     vertexShader,
     fragmentShader,
     uniforms: {
-      uLightColor: { value: new THREE.Color(1, 1, 1) },
+      uLightColor: { value: new THREE.Color(lightColor) }, 
+      //uLightColor: { value: new THREE.Color(1, 1, 1) },
       uObjectColor: { value: new THREE.Color(1, 1, 1) }, // Default white, should be changed based on IO
       uLightPosition: { value: new THREE.Vector3(10, 10, 10) }, // Example position, should be animated
       uViewPosition: { value: new THREE.Vector3(0, 0, 10) }, // Camera position
@@ -140,7 +148,7 @@ const BezierSurface = ({ accuracy, texture, normalMap, kd, ks, specularExponent 
       uKs: { value: ks },
       uShininess: { value: specularExponent }
     },
-  }), [kd, ks, specularExponent]);
+  }), [kd, ks, specularExponent, lightColor]);
 
   // Update the material on frame if necessary
   useFrame(() => {
