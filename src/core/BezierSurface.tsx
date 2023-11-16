@@ -42,25 +42,37 @@ const createBezierGeometry = (
     const geometry = new THREE.PlaneGeometry(width, height, widthSegments, heightSegments);
 
   
-    // Get a reference to the position attribute
-    const positionAttribute = geometry.attributes.position;
+    // // Get a reference to the position attribute
+    // const positionAttribute = geometry.attributes.position;
   
-    // Modify the z component of each vertex
-    for (let i = 0; i < positionAttribute.count; i++) {
-      // Each vertex is a Vector3, composed of three values (x, y, z)
-      const u = positionAttribute.getX(i) / width + 0.5;
-      const v = positionAttribute.getY(i) / height + 0.5;
+    // // Modify the z component of each vertex
+    // for (let i = 0; i < positionAttribute.count; i++) {
+    //   // Each vertex is a Vector3, composed of three values (x, y, z)
+    //   const u = positionAttribute.getX(i) / width + 0.5;
+    //   const v = positionAttribute.getY(i) / height + 0.5;
   
-      // Here you would use the evaluateBezierSurface function to get the correct z value
-      // For demonstration, we'll just use a simple function like before
-      const zValue = Math.sin(u * Math.PI * 2) * Math.cos(v * Math.PI * 2);
+    //   // Here you would use the evaluateBezierSurface function to get the correct z value
+    //   // For demonstration, we'll just use a simple function like before
+    //   const zValue = Math.sin(u * Math.PI * 2) * Math.cos(v * Math.PI * 2);
   
-      // Set the z component of the position attribute to the evaluated z value
-      positionAttribute.setZ(i, zValue);
+    //   // Set the z component of the position attribute to the evaluated z value
+    //   positionAttribute.setZ(i, zValue);
+    // }
+
+    const positions = geometry.attributes.position.array;
+
+    // Loop through the position array and update the z values
+    for (let i = 0; i < positions.length; i += 3) {
+      const u = positions[i] + 0.5;
+      const v = positions[i + 1] + 0.5;
+      const point = evaluateBezierSurface(u, v, controlPoints);
+      positions[i + 2] = point.z; // Update the z component based on the Bezier surface
     }
   
     // Tell three.js that the position attribute needs to be updated on the GPU
-    positionAttribute.needsUpdate = true;
+   // positionAttribute.needsUpdate = true;
+    geometry.attributes.position.needsUpdate = true;
+
   
     // Compute vertex normals if necessary
     geometry.computeVertexNormals();
