@@ -159,6 +159,7 @@ interface BezierSurfaceProps {
   specularExponent: number;
   lightColor: string;
   animateLight: boolean;
+  objectColor: THREE.Color | THREE.Texture;
 }
 
 const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normalMap, kd, ks, specularExponent, lightColor, animateLight }) => {
@@ -219,20 +220,32 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
   `;
 
   // Define material
-  const material = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader,
-    fragmentShader,
-    uniforms: {
-      uLightColor: { value: new THREE.Color(lightColor) }, 
-      //uLightColor: { value: new THREE.Color(1, 1, 1) },
-      uObjectColor: { value: new THREE.Color(1, 1, 1) }, // Default white, should be changed based on IO
-      uLightPosition: { value: new THREE.Vector3(10, 10, 10) }, // Example position, should be animated
-      uViewPosition: { value: new THREE.Vector3(0, 0, 10) }, // Camera position
+  const material = useMemo(() => {
+    // Define uniforms for the ShaderMaterial
+    const uniforms = {
+      uLightColor: { value: new THREE.Color(lightColor) },
+      uLightPosition: { value: new THREE.Vector3(10, 10, 10) },
+      uViewPosition: { value: new THREE.Vector3(0, 0, 10) },
       uKd: { value: kd },
       uKs: { value: ks },
-      uShininess: { value: specularExponent }
-    },
-  }), [kd, ks, specularExponent, lightColor]);
+      uShininess: { value: specularExponent },
+      uTexture: { value: texture }, // Add this line to pass the texture to the shader
+    };
+
+    // Create the ShaderMaterial
+    const shaderMaterial = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: uniforms,
+    });
+
+    // If a texture is provided, set the map to the texture
+    if (texture instanceof THREE.Texture) {
+      shaderMaterial.uniforms.uTexture.value = texture;
+    }
+
+    return shaderMaterial;
+  }, [kd, ks, specularExponent, lightColor, texture]); // Include 'texture' in the dependency array
 
   // const meshRef = React.useRef();
   // const { gl, camera } = useThree();

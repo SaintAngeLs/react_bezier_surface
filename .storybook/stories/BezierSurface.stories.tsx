@@ -53,6 +53,10 @@ export default {
       control: 'color',
       description: 'The color of the light source',
     },
+    texture: { 
+      control: 'file',
+      description: 'The texture'
+     },
     // Define additional argTypes for other properties like texture and normalMap if needed
   },
 } as Meta;
