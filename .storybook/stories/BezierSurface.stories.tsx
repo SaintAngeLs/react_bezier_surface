@@ -57,6 +57,10 @@ export default {
       control: 'file',
       description: 'The texture'
      },
+     objectColor: {
+      control: 'color',
+      description: 'Color Of the object',
+     }
     // Define additional argTypes for other properties like texture and normalMap if needed
   },
 } as Meta;
@@ -71,6 +75,8 @@ DefaultBezierSurface.args = {
   specularExponent: 32,
   lightColor: '#ffffff',
   animateLight: false,
+  texture: '',
+  objectColor: '#ff00ff',
   // Set defaults for other props like texture and normalMap if needed
 };
 

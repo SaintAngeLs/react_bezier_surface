@@ -159,10 +159,20 @@ interface BezierSurfaceProps {
   specularExponent: number;
   lightColor: string;
   animateLight: boolean;
-  objectColor: THREE.Color | THREE.Texture;
+  objectColor: string | THREE.Color; 
 }
 
-const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normalMap, kd, ks, specularExponent, lightColor, animateLight }) => {
+const BezierSurface: React.FC<BezierSurfaceProps> = ({ 
+  accuracy, 
+  texture: textureProp, 
+  normalMap, 
+  kd, 
+  ks, 
+  specularExponent, 
+  objectColor,
+  lightColor, 
+  animateLight, 
+}) => {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const controlPoints = generateControlPoints();
   const geometry = useMemo(() => createBezierGeometry(accuracy, controlPoints), [
@@ -172,6 +182,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
 
   const lightRef = React.useRef<THREE.PointLight>(null);
 
+  
   // Define shaders
   const vertexShader = `
     varying vec3 vNormal;
@@ -188,18 +199,21 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
   uniform vec3 uLightColor;
   uniform vec3 uLightPosition;
   uniform vec3 uViewPosition;
+  uniform vec3 uObjectColor;
   uniform float uKd;
   uniform float uKs;
   uniform float uShininess;
   varying vec3 vNormal;
   varying vec2 vUv;
+  uniform sampler2D uTexture;
+  uniform bool uUseTexture;
   
   void main() {
     vec3 normal = normalize(vNormal);
     vec3 lightDir = normalize(uLightPosition - vNormal);
     vec3 viewDir = normalize(uViewPosition - vNormal);
     vec3 reflectDir = reflect(-lightDir, normal);
-    
+   
   
     // Diffuse component
     float diff = max(dot(normal, lightDir), 0.0);
@@ -214,10 +228,29 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
   
     // Combine results
     vec3 result = diffuse + specular;
-    gl_FragColor = vec4(result, 1.0);
+     //gl_FragColor = vec4(result, 1.0);
+
+    // Check if there is a  texture
+    if (uUseTexture) {
+      vec4 texelColor = texture2D(uTexture, vUv);
+      gl_FragColor = vec4(texelColor.rgb * result, texelColor.a);
+    } else {
+      gl_FragColor = vec4(uObjectColor * result, 1.0);
+    }
   }
   
   `;
+
+  const texture = useMemo(() => {
+    if (textureProp instanceof THREE.Texture) {
+      return textureProp;
+    }  else if (typeof textureProp === 'string' && textureProp !== '') {
+      return new THREE.TextureLoader().load(textureProp);
+    }
+    return null; // Return undefined or a default texture if no path is provided
+  }, [textureProp]);
+
+  const defaultObjectColor = new THREE.Color('#ffffff');
 
   // Define material
   const material = useMemo(() => {
@@ -229,7 +262,9 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
       uKd: { value: kd },
       uKs: { value: ks },
       uShininess: { value: specularExponent },
-      uTexture: { value: texture }, // Add this line to pass the texture to the shader
+      uTexture: { value: texture || new THREE.Texture() }, // Add this line to pass the texture to the shader
+      uUseTexture: { value: texture instanceof THREE.Texture },
+      uObjectColor: { value: new THREE.Color(objectColor) },
     };
 
     // Create the ShaderMaterial
