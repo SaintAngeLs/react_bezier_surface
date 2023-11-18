@@ -158,15 +158,18 @@ interface BezierSurfaceProps {
   ks: number;
   specularExponent: number;
   lightColor: string;
+  animateLight: boolean;
 }
 
-const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normalMap, kd, ks, specularExponent, lightColor }) => {
+const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normalMap, kd, ks, specularExponent, lightColor, animateLight }) => {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const controlPoints = generateControlPoints();
   const geometry = useMemo(() => createBezierGeometry(accuracy, controlPoints), [
     accuracy,
     controlPoints,
   ]);
+
+  const lightRef = React.useRef<THREE.PointLight>(null);
 
   // Define shaders
   const vertexShader = `
@@ -195,6 +198,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
     vec3 lightDir = normalize(uLightPosition - vNormal);
     vec3 viewDir = normalize(uViewPosition - vNormal);
     vec3 reflectDir = reflect(-lightDir, normal);
+    
   
     // Diffuse component
     float diff = max(dot(normal, lightDir), 0.0);
@@ -243,11 +247,22 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({ accuracy, texture, normal
     if (meshRef.current) {
       meshRef.current.rotation.z = clock.getElapsedTime() * 0.1;
     }
+    if (animateLight && lightRef.current) {
+      // Animate the light around the z-axis
+      const elapsedTime = clock.getElapsedTime();
+      const radius = 5; // Adjust as necessary
+      lightRef.current.position.x = Math.sin(elapsedTime) * radius;
+      lightRef.current.position.y = Math.cos(elapsedTime) * radius;
+      
+      // Update the shader uniform for light position
+      material.uniforms.uLightPosition.value.copy(lightRef.current.position);
+    }
   });
 
   return (
     <mesh ref={meshRef}  geometry={geometry} material={material}>
       {/* Add children or additional elements if needed */}
+      <pointLight ref={lightRef} color={lightColor} position={new THREE.Vector3(10, 10, 10)} />
     </mesh>
   );
 };

@@ -66,6 +66,7 @@ DefaultBezierSurface.args = {
   ks: 0.5,
   specularExponent: 32,
   lightColor: '#ffffff',
+  animateLight: false,
   // Set defaults for other props like texture and normalMap if needed
 };
 
