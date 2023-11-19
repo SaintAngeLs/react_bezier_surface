@@ -87,6 +87,8 @@ const createBezierGeometry = (
 
     const vertices = createBezierVertices(accuracy, controlPoints);
 
+    const uvs = new Float32Array((accuracy + 1) * (accuracy + 1) * 2);
+
     const indices: number[] = [];
     for (let i = 0; i < accuracy; i++) {
       for (let j = 0; j < accuracy; j++) {
@@ -104,6 +106,7 @@ const createBezierGeometry = (
     const geometry = new THREE.BufferGeometry();
     geometry.setIndex(indices);
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); 
     geometry.computeVertexNormals();
   
     return geometry;
@@ -208,6 +211,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   varying vec2 vUv;
   uniform sampler2D uTexture;
   uniform bool uUseTexture;
+  
 
   uniform sampler2D uNormalMap;
   uniform bool uUseNormalMap;
@@ -219,36 +223,69 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     vec3 reflectDir = reflect(-lightDir, normal);
    
   
-    // Diffuse component
-    float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = uKd * uLightColor * diff;
-  
-    // Specular component
+    // Lambertian reflectance
+    float lambertian = max(dot(normal, lightDir), 0.0);
+    // Specular reflectance
     float spec = 0.0;
-    if(diff > 0.0) { // Only calculate specular if light hits the surface
-      spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
+    if (lambertian > 0.0) {
+      float specular = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
+      spec = uKs * specular;
     }
-    vec3 specular = uKs * uLightColor * spec;
-  
-    // Combine results
-    vec3 result = diffuse + specular;
-     //gl_FragColor = vec4(result, 1.0);
+    vec3 lighting = uKd * uLightColor * lambertian + spec;
 
     // Apply normal mapping
     if (uUseNormalMap) {
       vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
       normalTexture = normalTexture * 2.0 - 1.0; // Remap from [0, 1] to [-1, 1]
-      // Assume TBN matrix is correctly calculated and passed as a varying or uniform
-      // normal = TBN * normalTexture; // Transform the normal from tangent to world space
+      // Transform the normal from tangent to world space
+      normal = normalize(normal + normalTexture);
     }
 
-    // Check if there is a  texture
+    // Texture color
+    vec4 texelColor = vec4(1.0);
     if (uUseTexture) {
-      vec4 texelColor = texture2D(uTexture, vUv);
-      gl_FragColor = vec4(texelColor.rgb * result, texelColor.a);
-    } else {
-      gl_FragColor = vec4(uObjectColor * result, 1.0);
+      texelColor = texture2D(uTexture, vUv);
     }
+
+       if (uUseTexture) {
+      vec4 texelColor = texture2D(uTexture, vUv);
+      gl_FragColor = vec4(texelColor.rgb * lighting, texelColor.a);
+    } else {
+      gl_FragColor = vec4(uObjectColor * lighting, 1.0);
+    }
+    // // Diffuse component
+    // float diff = max(dot(normal, lightDir), 0.0);
+    // vec3 diffuse = uKd * uLightColor * diff;
+  
+    // // Specular component
+    // float spec = 0.0;
+    // if(diff > 0.0) { // Only calculate specular if light hits the surface
+    //   spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
+    // }
+    // vec3 specular = uKs * uLightColor * spec;
+  
+    // // Combine results
+    // vec3 result = diffuse + specular;
+    //  //gl_FragColor = vec4(result, 1.0);
+
+     
+    // // Apply normal mapping
+    // if (uUseNormalMap) {
+    //   vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
+    //   normalTexture = normalTexture * 2.0 - 1.0; // Remap from [0, 1] to [-1, 1]
+    //   // Assume TBN matrix is correctly calculated and passed as a varying or uniform
+    //   // normal = TBN * normalTexture; // Transform the normal from tangent to world space
+    // }
+
+    // // Check if there is a  texture
+    // if (uUseTexture) {
+    //   vec4 texelColor = texture2D(uTexture, vUv);
+    //   gl_FragColor = vec4(texelColor.rgb * result, texelColor.a);
+    // } else {
+    //   gl_FragColor = vec4(uObjectColor * result, 1.0);
+    // }
+
+    
   }
   
   `;
@@ -266,20 +303,27 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
 
   // Load the texture when the textureProp changes
   React.useEffect(() => {
-    if (typeof textureProp === 'string' && textureProp !== '') {
-      new THREE.TextureLoader().load(textureProp, (texture) => {
-        setLoadedTexture(texture);
-        // Once the texture is loaded, you need to update the material
-        if (meshRef.current) {
-          (meshRef.current.material as THREE.ShaderMaterial).uniforms.uTexture.value = texture;
-          (meshRef.current.material as THREE.ShaderMaterial).uniforms.uUseTexture.value = true;
-          (meshRef.current.material as THREE.ShaderMaterial).needsUpdate = true;
-        }
-      });
+    if (textureProp instanceof File) {
+      const reader = new FileReader();
+      reader.onload = (event: any) => {
+        const dataUrl = event.target.result;
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(dataUrl, (loadedTexture) => {
+          setLoadedTexture(loadedTexture);
+          if (meshRef.current) {
+            const material = meshRef.current.material as THREE.ShaderMaterial;
+            material.uniforms.uTexture.value = loadedTexture;
+            material.uniforms.uUseTexture.value = true;
+            material.needsUpdate = true;
+          }
+        }, undefined, (error) => {
+          console.error('Texture loading error:', error);
+        });
+      };
+      reader.readAsDataURL(textureProp);
     }
   }, [textureProp]);
-
-
+  
   const defaultObjectColor = new THREE.Color('#ffffff');
 
   // Define material
