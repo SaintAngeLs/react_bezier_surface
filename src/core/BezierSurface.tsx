@@ -374,13 +374,24 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     }
     if (animateLight && lightRef.current) {
       // Animate the light around the z-axis
-      const elapsedTime = clock.getElapsedTime();
-      const radius = 5; // Adjust as necessary
-      lightRef.current.position.x = Math.sin(elapsedTime) * radius;
-      lightRef.current.position.y = Math.cos(elapsedTime) * radius;
+      // const elapsedTime = clock.getElapsedTime();
+      // const radius = 5; // Adjust as necessary
+      // lightRef.current.position.x = Math.sin(elapsedTime) * radius;
+      // lightRef.current.position.y = Math.cos(elapsedTime) * radius;
       
-      // Update the shader uniform for light position
-      material.uniforms.uLightPosition.value.copy(lightRef.current.position);
+      // // Update the shader uniform for light position
+      // material.uniforms.uLightPosition.value.copy(lightRef.current.position);
+
+       // Spiral light animation
+       const elapsedTime = clock.getElapsedTime();
+       const a = 5; // Spiral radius
+       const b = 0.2; // Spiral tightness
+       lightRef.current.position.x = a * Math.cos(b * elapsedTime) * Math.sin(elapsedTime);
+       lightRef.current.position.y = a * Math.sin(b * elapsedTime) * Math.sin(elapsedTime);
+       lightRef.current.position.z = a * Math.cos(elapsedTime); // This will create a spiral in the z=const plane
+ 
+       // Update the shader uniform for light position
+       material.uniforms.uLightPosition.value.copy(lightRef.current.position);
     }
   });
 
