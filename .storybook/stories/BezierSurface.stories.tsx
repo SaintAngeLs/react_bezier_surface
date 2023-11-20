@@ -21,7 +21,7 @@ export default {
       control: {
         type: 'range',
         min: 1,
-        max: 20,
+        max: 50,
         step: 0.01,
       },
     },
@@ -60,7 +60,11 @@ export default {
      objectColor: {
       control: 'color',
       description: 'Color Of the object',
-     }
+     },
+     showGrid: {
+      control: 'boolean',
+      description: 'Show or hide the grid',
+    },
     // Define additional argTypes for other properties like texture and normalMap if needed
   },
 } as Meta;
@@ -77,6 +81,7 @@ DefaultBezierSurface.args = {
   animateLight: false,
   texture: '../example_texture.png',
   objectColor: '#ff00ff',
+  showGrid: true,
   // Set defaults for other props like texture and normalMap if needed
 };
 

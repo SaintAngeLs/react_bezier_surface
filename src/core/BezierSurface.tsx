@@ -3,6 +3,8 @@ import * as React from 'react';
 import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
+import { LineSegments, EdgesGeometry, LineBasicMaterial } from 'three';
+
 
 // Function to generate control points for the Bezier surface
 const generateControlPoints = (): THREE.Vector3[][] => {
@@ -162,7 +164,8 @@ interface BezierSurfaceProps {
   specularExponent: number;
   lightColor: string;
   animateLight: boolean;
-  objectColor: string | THREE.Color; 
+  objectColor: string | THREE.Color;
+  showGrid?: boolean;
   
 }
 
@@ -176,6 +179,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   objectColor,
   lightColor, 
   animateLight, 
+  showGrid = true,
 }) => {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const controlPoints = generateControlPoints();
@@ -290,6 +294,8 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   
   `;
   const [sometexture, setTexture] = React.useState<THREE.Texture | null>(null);
+  const [edgesGeometry, setEdgesGeometry] = React.useState<THREE.EdgesGeometry | null>(null);
+
   const texture = useMemo(() => {
     if (textureProp instanceof THREE.Texture) {
       return textureProp;
@@ -298,6 +304,29 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     }
     return null; // Return undefined or a default texture if no path is provided
   }, [textureProp]);
+
+
+  React.useEffect(() => {
+    if (showGrid) {
+      // Create edges geometry from the main geometry
+      const edges = new THREE.EdgesGeometry(geometry);
+      setEdgesGeometry(edges);
+    } else {
+      // Dispose of edges geometry when not shown
+      if (edgesGeometry) {
+        edgesGeometry.dispose();
+      }
+      setEdgesGeometry(null);
+    }
+
+    // Cleanup function to dispose of geometry on unmount or when showGrid turns false
+    return () => {
+      if (edgesGeometry) {
+        edgesGeometry.dispose();
+      }
+    };
+  }, [showGrid, geometry]);
+
 
   const [loadedTexture, setLoadedTexture] = React.useState<THREE.Texture | null>(null);
 
@@ -395,11 +424,24 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     }
   });
 
+  // const wireframeMaterial = useMemo(() => new LineBasicMaterial({ color: 0x000000 }), []);
+  // const edgesGeometry = useMemo(() => new EdgesGeometry(geometry), [geometry]);
+
+  const wireframeGeometry = useMemo(() => new THREE.WireframeGeometry(geometry), [geometry]);
+
   return (
-    <mesh ref={meshRef}  geometry={geometry} material={material}>
-      {/* Add children or additional elements if needed */}
+    <>
+      <mesh ref={meshRef} geometry={geometry} material={material}>
+        {/* Add children or additional elements if needed */}
+      </mesh>
+      {showGrid && (
+        <lineSegments
+          geometry={wireframeGeometry}
+          material={new THREE.LineBasicMaterial({ color: 0x000000 })}
+        />
+      )}
       <pointLight ref={lightRef} color={lightColor} position={new THREE.Vector3(10, 10, 10)} />
-    </mesh>
+    </>
   );
 };
 
