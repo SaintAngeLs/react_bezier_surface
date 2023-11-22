@@ -1,6 +1,7 @@
 // BezierSurface.stories.tsx
 import * as React from 'react';
 import * as THREE from 'three'
+
 import { Story, Meta } from '@storybook/react';
 
 import { Setup } from '../Setup';
@@ -21,7 +22,7 @@ export default {
       control: {
         type: 'range',
         min: 1,
-        max: 50,
+        max: 90,
         step: 0.01,
       },
     },

@@ -3,7 +3,10 @@ import * as React from 'react';
 import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useLoader, extend } from '@react-three/fiber';
 import { LineSegments, EdgesGeometry, LineBasicMaterial } from 'three';
+import { OrthographicCamera } from 'three';
+extend({ OrthographicCamera });
 
 
 // Function to generate control points for the Bezier surface
@@ -128,11 +131,56 @@ const createBezierGeometry = (
     return geometry;
 
 };
+
+// Function to create the wireframe geometry of the Bezier surface
+const createBezierWireframeGeometry = (
+  accuracy: number,
+  controlPoints: THREE.Vector3[][]
+): THREE.BufferGeometry => {
+  // First, create the vertices for the Bezier surface
+  const vertices3D = createBezierVertices(accuracy, controlPoints);
+
+  // Flatten the z-coordinate of each vertex to project it onto the XY plane
+  for (let i = 0; i < vertices3D.length / 3; i++) {
+    vertices3D[i * 3 + 2] = 0; // Set the Z-coordinate to 0
+  }
+
+  // Create a new buffer geometry to hold the wireframe
+  const wireframeGeometry = new THREE.BufferGeometry();
+
+  // Create an array to hold the indices for the line segments
+  const lineIndices: number[] = [];
+
+  // Loop through each grid cell to generate two triangles (as lines)
+  for (let i = 0; i < accuracy; i++) {
+    for (let j = 0; j < accuracy; j++) {
+      // Calculate the indices of the corners of the cell
+      const a = i * (accuracy + 1) + j;
+      const b = a + accuracy + 1;
+      const c = a + 1;
+      const d = b + 1;
+
+      // Add the lines for the triangles
+      lineIndices.push(a, b, b, d, d, a); // first triangle
+      lineIndices.push(b, c, c, a); // second triangle (note: one line is already added)
+    }
+  }
+
+  // Add the vertices and line indices to the geometry
+  wireframeGeometry.setIndex(lineIndices);
+  wireframeGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices3D), 3));
+  
+  // Return the wireframe geometry
+  return wireframeGeometry;
+};
+
+
+
   
 interface BezierSurfaceProps {
   accuracy: number;
-  texture?: THREE.Texture;
-  normalMap?: THREE.Texture;
+  texture?: string;
+  normalMap?: string;
   kd: number;
   ks: number;
   specularExponent: number;
@@ -146,8 +194,8 @@ interface BezierSurfaceProps {
 
 const BezierSurface: React.FC<BezierSurfaceProps> = ({ 
   accuracy, 
-  texture: textureProp, 
-  normalMap: normalMapProp, 
+  texture: textureProp = '', 
+  normalMap: normalMapProp = '', 
   kd, 
   ks, 
   specularExponent, 
@@ -193,9 +241,14 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       vTangent = normalize(vTangent);
       vBitangent = normalize(cross(normal, vTangent));
 
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      // gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+      // Flatten the z-coordinate to project the vertices onto the XY plane
+      vec4 modelViewPosition = modelViewMatrix * vec4(position.x, position.y, 0.0, 1.0);
+      gl_Position = projectionMatrix * modelViewPosition;
     }
   `;
+  
   const fragmentShader = `
   uniform vec3 uLightColor;
   uniform vec3 uLightPosition;
@@ -220,15 +273,22 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   uniform bool uUseNormalMap;
   
   void main() {
-    vec3 normal = normalize(vNormal);
+    vec3 modulatedNormal = vNormal;
+    if (uUseNormalMap) {
+      vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
+      normalTexture = normalTexture * 2.0 - 1.0;
+      vec3 Nsurface = normalize(vNormal);
+      vec3 B = normalize(cross(Nsurface, vec3(0.0, 0.0, 1.0)));
+      vec3 T = normalize(cross(B, Nsurface));
+      mat3 TBN = mat3(T, B, Nsurface);
+      modulatedNormal = normalize(TBN * normalTexture);
+    }
+
     vec3 lightDir = normalize(uLightPosition - vNormal);
     vec3 viewDir = normalize(uViewPosition - vNormal);
-    vec3 reflectDir = reflect(-lightDir, normal);
-   
+    vec3 reflectDir = reflect(-lightDir, modulatedNormal);
   
-    // Lambertian reflectance
-    float lambertian = max(dot(normal, lightDir), 0.0);
-    // Specular reflectance
+    float lambertian = max(dot(modulatedNormal, lightDir), 0.0);
     float spec = 0.0;
     if (lambertian > 0.0) {
       float specular = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
@@ -236,50 +296,67 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     }
     vec3 lighting = uKd * uLightColor * lambertian + spec;
 
-    // Apply normal mapping
-    if (uUseNormalMap) {
-      vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
-      normalTexture = normalTexture * 2.0 - 1.0;
-      
-      mat3 tbnMatrix = mat3(vTangent, vBitangent, normal);
-      normal = normalize(tbnMatrix * normalTexture);
-    }
-    
-  
-    // Texture color
-    vec4 texelColor = vec4(1.0);
-    if (uUseTexture) {
-      texelColor = texture2D(uTexture, vUv);
-    }
-
-       if (uUseTexture) {
-      vec4 texelColor = texture2D(uTexture, vUv);
-      gl_FragColor = vec4(texelColor.rgb * lighting, texelColor.a);
-    } else {
-      gl_FragColor = vec4(uObjectColor * lighting, 1.0);
-    }
-       
+    vec4 texelColor = uUseTexture ? texture2D(uTexture, vUv) : vec4(1.0);
+    gl_FragColor = vec4(texelColor.rgb * lighting, texelColor.a) * vec4(uObjectColor, 1.0);
   }
-  
   `;
   const [sometexture, setTexture] = React.useState<THREE.Texture | null>(null);
   const [edgesGeometry, setEdgesGeometry] = React.useState<THREE.EdgesGeometry | null>(null);
 
-  const texture = useMemo(() => {
-    if (textureProp instanceof THREE.Texture) {
-      return textureProp;
-    }  else if (typeof textureProp === 'string' && textureProp !== '') {
-      return new THREE.TextureLoader().load(textureProp, setTexture);
-    }
-    return null; // Return undefined or a default texture if no path is provided
-  }, [textureProp]);
 
+  const { size, scene, gl } = useThree(); // use scene and gl from useThree hook
+  const orthoCameraRef = React.useRef<THREE.OrthographicCamera>(); 
+
+  useMemo(() => {
+    const aspect = size.width / size.height;
+    // Make sure the orthographic camera's frustum encompasses the area of interest
+    const camera = new THREE.OrthographicCamera(
+      -aspect * 10, aspect * 10, 10, -10, 0.01, 1000
+    );
+    camera.position.set(0, 0, 10); // Set the camera to look down the Z-axis
+    camera.lookAt(new THREE.Vector3(0, 0, 0)); // Look at the center of the XY plane
+    orthoCameraRef.current = camera;
+    scene.add(camera);
+  }, [size.width, size.height]);
+
+  useFrame(() => {
+    const camera = orthoCameraRef.current;
+    if (camera) {
+      // Render the scene using the orthographic camera
+      gl.render(scene, camera);
+    }
+  });
+
+
+
+  // Inside your component:
+  const texture = textureProp ? useLoader(THREE.TextureLoader, textureProp) : undefined;
+  const normalMap = normalMapProp ? useLoader(THREE.TextureLoader, normalMapProp) : undefined;
+
+  React.useEffect(() => {
+    // Since texture and normalMap could be undefined, check before using them
+    if (texture) {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+    }
+    if (normalMap) {
+      normalMap.wrapS = THREE.RepeatWrapping;
+      normalMap.wrapT = THREE.RepeatWrapping;
+    }
+  }, [texture, normalMap]);
+
+  React.useEffect(() => {
+    if (texture instanceof THREE.Texture) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    if (normalMap instanceof THREE.Texture) normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+  }, [texture, normalMap]);
+
+  
 
   React.useEffect(() => {
     if (showGrid) {
       // Create edges geometry from the main geometry
-      const edges = new THREE.EdgesGeometry(geometry);
-      setEdgesGeometry(edges);
+      // const edges = new THREE.EdgesGeometry(geometry);
+      // setEdgesGeometry(edges);
     } else {
       // Dispose of edges geometry when not shown
       if (edgesGeometry) {
@@ -333,12 +410,12 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       uKd: { value: kd },
       uKs: { value: ks },
       uShininess: { value: specularExponent },
-      uTexture: { value: loadedTexture || new THREE.Texture() }, // Add this line to pass the texture to the shader
-      uUseTexture: { value: !!loadedTexture },
+      uTexture: { value: texture || new THREE.Texture() }, // Add this line to pass the texture to the shader
+      uUseTexture: { value: !!texture },
       uObjectColor: { value: new THREE.Color(objectColor) },
 
-      uNormalMap: { value: loadedNormalMap },
-      uUseNormalMap: { value: useNormalMap },
+      uNormalMap: { value: normalMap || new THREE.Texture() },
+      uUseNormalMap: { value: !!normalMap && useNormalMap }
     };
 
     // Create the ShaderMaterial
@@ -355,13 +432,11 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   }, [kd, ks, specularExponent, lightColor, loadedTexture,  loadedNormalMap, useNormalMap]); // Include 'texture' in the dependency array
 
 
+
   // Update the material on frame if necessary
   useFrame(({clock}) => {
     // Update uniforms or perform any animations
 
-    if (meshRef.current) {
-      meshRef.current.rotation.z = clock.getElapsedTime() * 0.1;
-    }
     if (animateLight && lightRef.current) {
       // Animate the light around the z-axis
       const elapsedTime = clock.getElapsedTime();
@@ -383,12 +458,21 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       //  // Update the shader uniform for light position
       //  material.uniforms.uLightPosition.value.copy(lightRef.current.position);
     }
+    const camera = orthoCameraRef.current;
+  
   });
 
   // const wireframeMaterial = useMemo(() => new LineBasicMaterial({ color: 0x000000 }), []);
   // const edgesGeometry = useMemo(() => new EdgesGeometry(geometry), [geometry]);
 
-  const wireframeGeometry = useMemo(() => new THREE.WireframeGeometry(geometry), [geometry]);
+  const wireframeGeometry = useMemo(() => {
+    // Generate the wireframe geometry based on the projected vertices
+    return createBezierWireframeGeometry(accuracy, controlPoints);
+  }, [accuracy, controlPoints]);
+  // const { size, scene, gl } = useThree(); // use scene and gl from useThree hook
+  // const orthoCameraRef = React.useRef(); // useRef to keep reference to the camera
+
+
 
   return (
     <>
