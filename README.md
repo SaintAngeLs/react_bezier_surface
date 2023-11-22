@@ -19,4 +19,7 @@ All the configuration (accuracy, kd, ks, animation, ...) is implemented using th
 
 ## Video Screen Cast:
 
-https://github.com/SaintAngeLs/react_bezier_surface/blob/development/Kazam_screencast_00000.mp4
+<video width="320" height="240" controls>
+  <source src="https://github.com/SaintAngeLs/react_bezier_surface/blob/development/Kazam_screencast_00000.mp4?raw=true" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
