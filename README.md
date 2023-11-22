@@ -17,3 +17,7 @@ npm run storybook
 All the configuration (accuracy, kd, ks, animation, ...) is implemented using the states of the contols, in this project, there is no secret-keys configuration.
 
 
+## Video Screen Cast:
+
+https://user-images.githubusercontent.com/Kazam_screencast_00000.mp4
+
