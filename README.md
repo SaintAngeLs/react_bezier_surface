@@ -1,7 +1,7 @@
-# Bezier Surface
+# Bezier Surface XY projection - triangles filling
 
 
-### Instatlation and running instruction
+## Instatlation and running instruction
 
 ```bash
 git clone https://github.com/SaintAngeLs/react_bezier_surface.git
@@ -11,5 +11,9 @@ npm install @react-three/drei
 # run the storybook
 npm run storybook
 ```
+
+## Keys configuration
+
+All the configuration (accuracy, kd, ks, animation, ...) is implemented using the states of the contols, in this project, there is no secret-keys configuration.
 
 

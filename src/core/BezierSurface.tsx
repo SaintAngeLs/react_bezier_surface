@@ -279,6 +279,9 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       normalTexture = normalTexture * 2.0 - 1.0;
       vec3 Nsurface = normalize(vNormal);
       vec3 B = normalize(cross(Nsurface, vec3(0.0, 0.0, 1.0)));
+      if (length(B) < 0.0001) {
+        B = vec3(0.0, 1.0, 0.0);
+      }
       vec3 T = normalize(cross(B, Nsurface));
       mat3 TBN = mat3(T, B, Nsurface);
       modulatedNormal = normalize(TBN * normalTexture);
@@ -410,12 +413,11 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       uKd: { value: kd },
       uKs: { value: ks },
       uShininess: { value: specularExponent },
-      uTexture: { value: texture || new THREE.Texture() }, // Add this line to pass the texture to the shader
-      uUseTexture: { value: !!texture },
+      uTexture: { value: loadedTexture || new THREE.Texture() }, // Add this line to pass the texture to the shader
+      uUseTexture: { value: !!loadedTexture },
       uObjectColor: { value: new THREE.Color(objectColor) },
-
-      uNormalMap: { value: normalMap || new THREE.Texture() },
-      uUseNormalMap: { value: !!normalMap && useNormalMap }
+      uNormalMap: { value: loadedNormalMap || new THREE.Texture() },
+      uUseNormalMap: { value: !!loadedNormalMap && useNormalMap }
     };
 
     // Create the ShaderMaterial
