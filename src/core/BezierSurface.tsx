@@ -110,10 +110,24 @@ const createBezierGeometry = (
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); 
     geometry.computeVertexNormals();
-  
+
+    const barycentric: number[] = []; // This array will store the barycentric coordinates
+
+    // Loop through each triangle to assign barycentric coordinates
+    for (let i = 0; i < indices.length; i += 3) {
+      barycentric.push(
+        1, 0, 0, 
+        0, 1, 0, 
+        0, 0, 1 
+      );
+    }
+
+    const barycentricAttribute = new Float32Array(barycentric);
+    geometry.setAttribute('barycentric', new THREE.BufferAttribute(barycentricAttribute, 3));
+      
     return geometry;
 
-  };
+};
   
 interface BezierSurfaceProps {
   accuracy: number;
@@ -126,13 +140,14 @@ interface BezierSurfaceProps {
   animateLight: boolean;
   objectColor: string | THREE.Color;
   showGrid?: boolean;
+  useNormalMap: boolean
   
 }
 
 const BezierSurface: React.FC<BezierSurfaceProps> = ({ 
   accuracy, 
   texture: textureProp, 
-  normalMap, 
+  normalMap: normalMapProp, 
   kd, 
   ks, 
   specularExponent, 
@@ -140,6 +155,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   lightColor, 
   animateLight, 
   showGrid = true,
+  useNormalMap,
 }) => {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const controlPoints = generateControlPoints();
@@ -156,9 +172,26 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     varying vec3 vNormal;
     varying vec2 vUv;
 
+    attribute vec3 barycentric; // Add barycentric attribute
+    varying vec3 vBarycentric;
+
+    varying vec3 vTangent;
+    varying vec3 vBitangent;
+
+    
+
     void main() {
       vNormal = normal;
       vUv = uv;
+
+      vBarycentric = barycentric;
+
+      vec3 c1 = cross(normal, vec3(0.0, 0.0, 1.0));
+      vec3 c2 = cross(normal, vec3(0.0, 1.0, 0.0));
+
+      vTangent = length(c1) > length(c2) ? c1 : c2;
+      vTangent = normalize(vTangent);
+      vBitangent = normalize(cross(normal, vTangent));
 
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
@@ -173,8 +206,14 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   uniform float uShininess;
   varying vec3 vNormal;
   varying vec2 vUv;
+  varying vec3 vBarycentric;
+  
   uniform sampler2D uTexture;
   uniform bool uUseTexture;
+
+  varying vec3 vTangent;
+  varying vec3 vBitangent;
+
   
 
   uniform sampler2D uNormalMap;
@@ -200,11 +239,13 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     // Apply normal mapping
     if (uUseNormalMap) {
       vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
-      normalTexture = normalTexture * 2.0 - 1.0; // Remap from [0, 1] to [-1, 1]
-      // Transform the normal from tangent to world space
-      normal = normalize(normal + normalTexture);
+      normalTexture = normalTexture * 2.0 - 1.0;
+      
+      mat3 tbnMatrix = mat3(vTangent, vBitangent, normal);
+      normal = normalize(tbnMatrix * normalTexture);
     }
-
+    
+  
     // Texture color
     vec4 texelColor = vec4(1.0);
     if (uUseTexture) {
@@ -257,29 +298,28 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
 
 
   const [loadedTexture, setLoadedTexture] = React.useState<THREE.Texture | null>(null);
+  const [loadedNormalMap, setLoadedNormalMap] = React.useState<THREE.Texture | null>(null);
 
-  // Load the texture when the textureProp changes
-  React.useEffect(() => {
-    if (textureProp instanceof File) {
-      const reader = new FileReader();
-      reader.onload = (event: any) => {
-        const dataUrl = event.target.result;
-        const textureLoader = new THREE.TextureLoader();
-        textureLoader.load(dataUrl, (loadedTexture) => {
-          setLoadedTexture(loadedTexture);
-          if (meshRef.current) {
-            const material = meshRef.current.material as THREE.ShaderMaterial;
-            material.uniforms.uTexture.value = loadedTexture;
-            material.uniforms.uUseTexture.value = true;
-            material.needsUpdate = true;
-          }
-        }, undefined, (error) => {
-          console.error('Texture loading error:', error);
+
+    // Load the texture when the textureProp changes
+    React.useEffect(() => {
+      if (typeof textureProp === 'string' && textureProp !== '') {
+        new THREE.TextureLoader().load(textureProp, setLoadedTexture);
+      }
+    }, [textureProp]);
+  
+    // Load the normal map when the normalMapProp changes
+    React.useEffect(() => {
+      if (typeof normalMapProp === 'string' && normalMapProp !== '') {
+        const loader = new THREE.TextureLoader();
+        loader.load(normalMapProp, (texture) => {
+          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+          setLoadedNormalMap(texture);
         });
-      };
-      reader.readAsDataURL(textureProp);
-    }
-  }, [textureProp]);
+      } else {
+        setLoadedNormalMap(null); // Reset normal map if the prop is not a string or is empty
+      }
+    }, [normalMapProp]);
   
   const defaultObjectColor = new THREE.Color('#ffffff');
 
@@ -297,8 +337,8 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       uUseTexture: { value: !!loadedTexture },
       uObjectColor: { value: new THREE.Color(objectColor) },
 
-      uNormalMap: { value: normalMap || new THREE.Texture() }, // Add this line to pass the normal map to the shader
-      uUseNormalMap: { value: normalMap instanceof THREE.Texture },
+      uNormalMap: { value: loadedNormalMap },
+      uUseNormalMap: { value: useNormalMap },
     };
 
     // Create the ShaderMaterial
@@ -309,12 +349,10 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     });
 
     // If a texture is provided, set the map to the texture
-    if (texture instanceof THREE.Texture) {
-      shaderMaterial.uniforms.uTexture.value = texture;
-    }
+  
 
     return shaderMaterial;
-  }, [kd, ks, specularExponent, lightColor, loadedTexture, normalMap]); // Include 'texture' in the dependency array
+  }, [kd, ks, specularExponent, lightColor, loadedTexture,  loadedNormalMap, useNormalMap]); // Include 'texture' in the dependency array
 
 
   // Update the material on frame if necessary

@@ -65,7 +65,14 @@ export default {
       control: 'boolean',
       description: 'Show or hide the grid',
     },
-    // Define additional argTypes for other properties like texture and normalMap if needed
+    normalMap: {
+      control: 'file',
+      description: 'The normal map texture',
+    },
+    useNormalMap: {
+      control: 'boolean',
+      description: 'Toggle the use of the normal map',
+    },
   },
 } as Meta;
 
@@ -82,7 +89,8 @@ DefaultBezierSurface.args = {
   texture: '../example_texture.png',
   objectColor: '#ff00ff',
   showGrid: true,
-  // Set defaults for other props like texture and normalMap if needed
+  normalMap: '',
+  useNormalMap: false,
 };
 
 DefaultBezierSurface.storyName = 'Default';
