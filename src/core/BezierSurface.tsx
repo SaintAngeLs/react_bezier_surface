@@ -82,7 +82,8 @@ const createBezierVertices = (
 // Function to create the geometry of the Bezier surface
 const createBezierGeometry = (
     accuracy: number,
-    controlPoints: THREE.Vector3[][]
+    controlPoints: THREE.Vector3[][],
+    useNormalMap: boolean
   ): THREE.BufferGeometry => {
     
     const width = 40;
@@ -92,7 +93,8 @@ const createBezierGeometry = (
 
     const vertices = createBezierVertices(accuracy, controlPoints);
 
-    const uvs = new Float32Array((accuracy + 1) * (accuracy + 1) * 2);
+    let  uvs = new Float32Array((accuracy + 1) * (accuracy + 1) * 2);
+    let uvIndex = 0;
 
     const indices: number[] = [];
     for (let i = 0; i < accuracy; i++) 
@@ -106,12 +108,23 @@ const createBezierGeometry = (
 
         indices.push(a, b, c);
         indices.push(b, d, c);
+
+        const u = i / accuracy;
+        const v = j / accuracy;
+
+        // Assign UV coordinates
+        uvs[uvIndex++] = u;
+        uvs[uvIndex++] = v;
+
       }
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setIndex(indices);
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); 
+    if(!useNormalMap){
+      uvs = new Float32Array((accuracy + 1) * (accuracy + 1) * 2);
+    }
+    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2)); 
     geometry.computeVertexNormals();
 
     const barycentric: number[] = []; // This array will store the barycentric coordinates
@@ -207,12 +220,14 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
 }) => {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const controlPoints = generateControlPoints();
-  const geometry = useMemo(() => createBezierGeometry(accuracy, controlPoints), [
+  const geometry = useMemo(() => createBezierGeometry(accuracy, controlPoints, useNormalMap), [
     accuracy,
     controlPoints,
   ]);
 
   const lightRef = React.useRef<THREE.PointLight>(null);
+
+  
 
   
   // Define shaders
@@ -267,23 +282,24 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
   varying vec3 vTangent;
   varying vec3 vBitangent;
 
-  
-
   uniform sampler2D uNormalMap;
   uniform bool uUseNormalMap;
+  uniform sampler2D normalMapTexture;
   
   void main() {
     vec3 modulatedNormal = vNormal;
     if (uUseNormalMap) {
-      vec3 normalTexture = texture2D(uNormalMap, vUv).rgb;
-      normalTexture = normalTexture * 2.0 - 1.0;
+      vec3 normalTexture = texture2D(normalMapTexture, vUv).rgb;
+      normalTexture = normalTexture * 2.0 - 1.0; // Convert from [0,1] to [-1,1]
+
       vec3 Nsurface = normalize(vNormal);
-      vec3 B = normalize(cross(Nsurface, vec3(0.0, 0.0, 1.0)));
-      if (length(B) < 0.0001) {
-        B = vec3(0.0, 1.0, 0.0);
-      }
-      vec3 T = normalize(cross(B, Nsurface));
-      mat3 TBN = mat3(T, B, Nsurface);
+      vec3 tangent = normalize(vTangent);
+      vec3 bitangent = normalize(vBitangent);
+      
+      // Compute the transformation matrix M
+      mat3 TBN = mat3(tangent, bitangent, Nsurface);
+      
+      // Apply the normal map
       modulatedNormal = normalize(TBN * normalTexture);
     }
 
@@ -299,12 +315,16 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     }
     vec3 lighting = uKd * uLightColor * lambertian + spec;
 
-    vec4 texelColor = uUseTexture ? texture2D(uTexture, vUv) : vec4(1.0);
+    vec4 texelColor = vec4(1.0); // Default color
+    if (uUseTexture) {
+      texelColor = texture2D(uTexture, vUv);
+    }
     gl_FragColor = vec4(texelColor.rgb * lighting, texelColor.a) * vec4(uObjectColor, 1.0);
   }
   `;
   const [sometexture, setTexture] = React.useState<THREE.Texture | null>(null);
   const [edgesGeometry, setEdgesGeometry] = React.useState<THREE.EdgesGeometry | null>(null);
+  const [normalMapTexture, setNormalMapTexture] = React.useState<THREE.Texture | null>(null);
 
 
   const { size, scene, gl } = useThree(); // use scene and gl from useThree hook
@@ -341,6 +361,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     if (texture) {
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
+      setIsTextureLoaded(true);
     }
     if (normalMap) {
       normalMap.wrapS = THREE.RepeatWrapping;
@@ -379,33 +400,56 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
 
   const [loadedTexture, setLoadedTexture] = React.useState<THREE.Texture | null>(null);
   const [loadedNormalMap, setLoadedNormalMap] = React.useState<THREE.Texture | null>(null);
+  const [isTextureLoaded, setIsTextureLoaded] = React.useState(false);
 
+  React.useEffect(() => {
+    if (typeof textureProp === 'string' && textureProp !== '') {
+      new THREE.TextureLoader().load(textureProp, (loadedTexture) => {
+        loadedTexture.wrapS = loadedTexture.wrapT = THREE.RepeatWrapping;
+        setLoadedTexture(loadedTexture);
+        setIsTextureLoaded(true); // Set texture loaded state to true
+        material.uniforms.uUseTexture.value = true;
+      }, undefined, (error) => {
+        console.error('Error loading texture:', error);
+        setIsTextureLoaded(false);
+      });
+    } else {
+      setIsTextureLoaded(false); // Set texture loaded state to false if no texture
+    }
+  }, [textureProp]);
 
-    // Load the texture when the textureProp changes
-    React.useEffect(() => {
-      if (typeof textureProp === 'string' && textureProp !== '') {
-        new THREE.TextureLoader().load(textureProp, setLoadedTexture);
-      }
-    }, [textureProp]);
-  
-    // Load the normal map when the normalMapProp changes
-    React.useEffect(() => {
-      if (typeof normalMapProp === 'string' && normalMapProp !== '') {
-        const loader = new THREE.TextureLoader();
-        loader.load(normalMapProp, (texture) => {
-          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-          setLoadedNormalMap(texture);
-        });
-      } else {
-        setLoadedNormalMap(null); // Reset normal map if the prop is not a string or is empty
-      }
-    }, [normalMapProp]);
+  React.useEffect(() => {
+    if (textureProp) {
+      new THREE.TextureLoader().load(textureProp, (texture) => {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        setLoadedTexture(texture);
+        setIsTextureLoaded(true);
+      }, undefined, (error) => {
+        console.error('Error loading texture:', error);
+        setIsTextureLoaded(false);
+      });
+    }
+  }, [textureProp]);
+
+  React.useEffect(() => {
+    if (normalMapProp && useNormalMap) {
+      const loader = new THREE.TextureLoader();
+      loader.load(normalMapProp, (texture) => {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        setNormalMapTexture(texture);
+      }, undefined, (error) => {
+        console.error('Error loading normal map:', error);
+      });
+    }
+  }, [normalMapProp, useNormalMap]);
+ 
   
   const defaultObjectColor = new THREE.Color('#ffffff');
 
   // Define material
   const material = useMemo(() => {
     // Define uniforms for the ShaderMaterial
+    const isTextureActuallyLoaded = texture && texture.image;
     const uniforms = {
       uLightColor: { value: new THREE.Color(lightColor) },
       uLightPosition: { value: new THREE.Vector3(10, 10, 10) },
@@ -414,10 +458,10 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       uKs: { value: ks },
       uShininess: { value: specularExponent },
       uTexture: { value: loadedTexture || new THREE.Texture() }, // Add this line to pass the texture to the shader
-      uUseTexture: { value: !!loadedTexture },
+      uUseTexture: { value:  isTextureActuallyLoaded },
       uObjectColor: { value: new THREE.Color(objectColor) },
-      uNormalMap: { value: loadedNormalMap || new THREE.Texture() },
-      uUseNormalMap: { value: !!loadedNormalMap && useNormalMap }
+      uNormalMap: { value: normalMapTexture},
+      uUseNormalMap: { value: useNormalMap && normalMapTexture}
     };
 
     // Create the ShaderMaterial
@@ -427,13 +471,64 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
       uniforms: uniforms,
     });
 
+    
+
     // If a texture is provided, set the map to the texture
   
 
     return shaderMaterial;
-  }, [kd, ks, specularExponent, lightColor, loadedTexture,  loadedNormalMap, useNormalMap]); // Include 'texture' in the dependency array
+  }, [kd, ks, specularExponent, lightColor, loadedTexture, isTextureLoaded, loadedNormalMap, useNormalMap]); // Include 'texture' in the dependency array
 
 
+  React.useEffect(() => {
+    if (typeof textureProp === 'string' && textureProp !== '') {
+      new THREE.TextureLoader().load(textureProp, (loadedTexture) => {
+        loadedTexture.wrapS = loadedTexture.wrapT = THREE.RepeatWrapping;
+        setLoadedTexture(loadedTexture);
+        setIsTextureLoaded(true); // Set texture loaded state to true
+      }, undefined, (error) => {
+        console.error('Error loading texture:', error);
+        setIsTextureLoaded(false);
+      });
+    } else {
+      setIsTextureLoaded(false); // Set texture loaded state to false if no texture
+    }
+  }, [textureProp]);
+
+
+
+    React.useEffect(() => {
+    if (typeof normalMapProp === 'string' && normalMapProp !== '') {
+      const loader = new THREE.TextureLoader();
+      loader.load(normalMapProp, (loadedNormalMap) => {
+        material.uniforms.uNormalMap.value = loadedNormalMap;
+        material.uniforms.uUseNormalMap.value = true;
+        setLoadedNormalMap(loadedNormalMap);
+      });
+    } else {
+      material.uniforms.uUseNormalMap.value = false;
+    }
+  }, [normalMapProp, material.uniforms]);
+
+  React.useEffect(() => {
+    if (material) {
+      material.uniforms.uTexture.value = isTextureLoaded ? loadedTexture : null;
+      material.uniforms.uUseTexture.value = isTextureLoaded;
+      material.needsUpdate = true;
+    }
+  }, [isTextureLoaded, loadedTexture, material]);
+  
+
+  
+
+  // React.useEffect(() => {
+  //   if (material.uniforms.uLightColor) {
+  //     material.uniforms.uLightColor.value = new THREE.Color(lightColor);
+  //   }
+  //   if (material.uniforms.uObjectColor) {
+  //     material.uniforms.uObjectColor.value = new THREE.Color(objectColor);
+  //   }
+  // }, [lightColor, objectColor, material.uniforms]);
 
   // Update the material on frame if necessary
   useFrame(({clock}) => {
@@ -463,7 +558,7 @@ const BezierSurface: React.FC<BezierSurfaceProps> = ({
     const camera = orthoCameraRef.current;
   
   });
-
+  
   // const wireframeMaterial = useMemo(() => new LineBasicMaterial({ color: 0x000000 }), []);
   // const edgesGeometry = useMemo(() => new EdgesGeometry(geometry), [geometry]);
 
